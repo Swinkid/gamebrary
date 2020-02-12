@@ -1,70 +1,91 @@
 <template lang="html">
-    <div class="links" v-if="hasWebsites">
-        <a
-            v-for="{ category, url } in game.websites"
-            :key="category"
-            :href="url"
-            target="_blank"
-        >
-            <i :class="getIcon(category)" />
-            {{ igdb.linkTypes[category] }}
-        </a>
+  <div v-if="hasWebsites" class="game-links">
+    <h3>Links</h3>
+    <div class="links">
+      <a
+        v-for="{ category, url } in game.websites"
+        :key="category"
+        :href="url"
+        :class="linkTypes[category].name"
+        target="_blank"
+      >
+        <template v-if="linkTypes[category].icon">
+          <i
+            :class="linkTypes[category].icon"
+            :title="$t(`gameDetail.links.${linkTypes[category].name}`)"
+          />
+        </template>
+
+        <template v-else>
+          <i class="fas fa-link"/>
+          <small>{{ $t(`gameDetail.links.${linkTypes[category].name}`) }}</small>
+        </template>
+      </a>
     </div>
+  </div>
 </template>
 
 <script>
 import { mapState } from 'vuex';
-import igdb from '@/shared/igdb';
 
 export default {
-    data() {
-        return {
-            igdb,
-            icons: {
-                official: 'fas fa-globe-americas',
-                facebook: 'fab fa-facebook-f',
-                steam: 'fab fa-steam',
-                youtube: 'fab fa-youtube',
-                twitter: 'fab fa-twitter',
-                instagram: 'fab fa-instagram',
-                iphone: 'fab fa-app-store-ios',
-                wikipedia: 'fab fa-wikipedia-w',
-                wikia: 'fas fa-link',
-                twitch: 'fab fa-twitch',
-                Reddit: 'fab fa-reddit',
-                reddit: 'fab fa-reddit',
-            },
-        };
-    },
-    computed: {
-        ...mapState(['game']),
+  data() {
+    return {
+      linkTypes: {
+        1: { name: 'official', icon: 'fas fa-home' },
+        2: { name: 'wikia', icon: 'fas fa-heart' },
+        3: { name: 'wikipedia', icon: 'fab fa-wikipedia-w' },
+        4: { name: 'facebook', icon: 'fab fa-facebook-square' },
+        5: { name: 'twitter', icon: 'fab fa-twitter' },
+        6: { name: 'twitch', icon: 'fab fa-twitch' },
+        8: { name: 'instagram', icon: 'fab fa-instagram' },
+        9: { name: 'youtube', icon: 'fab fa-youtube' },
+        10: { name: 'iphone', icon: 'fab fa-app-store-ios' },
+        11: { name: 'ipad' },
+        12: { name: 'android', icon: 'fab fa-android' },
+        13: { name: 'steam', icon: 'fab fa-steam' },
+        14: { name: 'reddit', icon: 'fab fa-reddit' },
+        15: { name: 'discord', icon: 'fab fa-discord' },
+        16: { name: 'google_plus', icon: 'fab fa-google' },
+        17: { name: 'tumblr', icon: 'fab fa-tumblr' },
+        18: { name: 'linkedin', icon: 'fab fa-linkedin' },
+        19: { name: 'pinterest', icon: 'fab fa-pinterest' },
+        20: { name: 'soundcloud', icon: 'fab fa-soundcloud' },
+      },
+    };
+  },
+  computed: {
+    ...mapState(['game']),
 
-        hasWebsites() {
-            return this.game && this.game.websites;
-        },
+    hasWebsites() {
+      return this.game && this.game.websites;
     },
+  },
 
-    methods: {
-        getIcon(id) {
-            const icon = this.igdb.linkTypes[id];
+  methods: {
+    getIcon(id) {
+      const icon = this.linkTypes[id];
 
-            return this.icons[icon];
-        },
+      return this.icons[icon];
     },
+  },
 };
 </script>
 
 <style lang="scss" rel="stylesheet/scss" scoped>
-    @import "~styles/styles.scss";
-    .links {
-        display: flex;
-        flex-direction: column;
-        margin-top: $gp;
+  @import "~styles/styles";
 
-        a {
-            color: $color-blue;
-            text-transform: capitalize;
-            text-decoration: none;
-        }
+  .links {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 30px);
+    margin-top: $gp / 2;
+
+    a {
+      height: 40px;
+      font-size: 20px;
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
     }
+  }
 </style>

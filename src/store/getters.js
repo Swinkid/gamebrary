@@ -1,54 +1,117 @@
+import platforms from '@/platforms';
+
 export default {
-    developers: (state) => {
-        const developers = state.game.developers;
+  // eslint-disable-next-line
+  ageRatings: () => {
+    return {
+      1: '3',
+      2: '7',
+      3: '12',
+      4: '16',
+      5: '18',
+      6: 'RP',
+      7: 'EC',
+      8: 'E',
+      9: 'E10',
+      10: 'T',
+      11: 'M',
+      12: 'AO',
+    };
+  },
 
-        return developers
-            ? developers.map(developer => developer.name).join(', ')
-            : null;
-    },
-
-    publishers: (state) => {
-        const publishers = state.game.publishers;
-
-        return publishers
-            ? publishers.map(publisher => publisher.name).join(', ')
-            : null;
-    },
-
-    genres: (state) => {
-        const genres = state.game.genres;
-
-        return genres
-            ? genres.map(genre => genre.name).join(', ')
-            : null;
-    },
-
-    playerPerspectives: (state) => {
-        const perspectives = state.game.player_perspectives;
-
-        return perspectives
-            ? perspectives.map(perspective => perspective.name).join(', ')
-            : null;
-    },
-
-    gameModes: (state) => {
-        const gameModes = state.game.game_modes;
-
-        return gameModes
-            ? gameModes.map(gameMode => gameMode.name).join(', ')
-            : null;
-    },
-
-    gamePlatforms: (state) => {
-        const gamePlatforms = state.game.platforms;
-
-        return gamePlatforms
-            ? gamePlatforms.map(gamePlatform => gamePlatform.name).join(', ')
-            : null;
-    },
-
+  releaseDate: (state) => {
     // eslint-disable-next-line
-    activeList: ({ gameLists, platform, activeListIndex }) => gameLists[platform.code][activeListIndex],
+    const releaseDate = state.game && state.game.release_dates
+      ? state.game.release_dates.filter(({ platform }) => state.platform.id === platform)
+      : null;
 
-    darkModeEnabled: state => state.settings && state.settings.nightMode,
+    return releaseDate && releaseDate.length
+      ? releaseDate[0].date
+      : null;
+  },
+
+  developers: (state) => {
+    const developers = state.game && state.game.involved_companies
+      ? state.game.involved_companies.filter(({ developer }) => developer)
+      : null;
+
+    return developers
+      ? developers.map(publisher => publisher.company.name).join(', ')
+      : null;
+  },
+
+  publishers: (state) => {
+    const publishers = state.game && state.game.involved_companies
+      ? state.game.involved_companies.filter(({ publisher }) => publisher)
+      : null;
+
+    return publishers
+      ? publishers.map(publisher => publisher.company.name).join(', ')
+      : null;
+  },
+
+  genres: (state) => {
+    const genres = state.game && state.game.genres
+      ? state.game.genres
+      : null;
+
+    return genres
+      ? genres.map(genre => genre.name).join(', ')
+      : null;
+  },
+
+  playerPerspectives: (state) => {
+    const perspectives = state.game && state.game.player_perspectives
+      ? state.game.player_perspectives
+      : null;
+
+    return perspectives
+      ? perspectives.map(perspective => perspective.name).join(', ')
+      : null;
+  },
+
+  gameModes: (state) => {
+    const gameModes = state.game && state.game.game_modes
+      ? state.game.game_modes
+      : null;
+
+    return gameModes
+      ? gameModes.map(gameMode => gameMode.name).join(', ')
+      : null;
+  },
+
+  gamePlatforms: (state) => {
+    const gamePlatforms = state.game && state.game.platforms
+      ? state.game.platforms.map(platform => platform.id)
+      : null;
+
+    return platforms.filter(({ id }) => id !== state.platform.id && gamePlatforms.includes(id));
+  },
+
+  gameNote: ({ game, notes }) => {
+    const gameSelected = game && game.id;
+    const hasNote = gameSelected && notes[game.id];
+
+    return hasNote
+      ? notes[game.id]
+      : '';
+  },
+
+  // eslint-disable-next-line
+  gameProgress: ({ game, progresses, platform }) => {
+    const gameSelected = game && game.id;
+    const hasProgress = gameSelected
+      && platform
+      && progresses[platform.code]
+      && progresses[platform.code][game.id];
+
+    return hasProgress
+      ? progresses[platform.code][game.id]
+      : null;
+  },
+
+  // eslint-disable-next-line
+  activeList: ({ gameLists, platform, activeListIndex }) => gameLists[platform.code][activeListIndex],
+
+  hasTags: state => Object.keys(state.tags) && Object.keys(state.tags).length > 0,
 };

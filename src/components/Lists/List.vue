@@ -1,309 +1,446 @@
-<!-- eslint-disable max-len -->
 <template lang="html">
-    <div :class="['list', viewClass, { dark: darkModeEnabled }, transparent]">
-        <div class="list-header" :class="{ searching, editing }">
-            <div v-if="searching">
-                {{ $t('game.addPlural') }}
-                <strong>{{ list[listIndex].name }}</strong>
-            </div>
-
-            <div v-else-if="editing">
-                <strong>{{ list[listIndex].name }}</strong> settings
-            </div>
-
-            <list-name-edit
-                v-else
-                :list-name="name"
-                :list-index="listIndex"
-                :game-count="games.length"
-                @update="updateLists('List name saved')"
-            />
-
-            <button class="small" @click="editList" v-if="!editing && !searching">
-                <i class="fas fa-cog" />
-            </button>
-        </div>
-
-        <game-search
-            v-if="searching"
-            :list-id="listIndex"
+  <div :class="['list', viewClass, { unique: unique && view !== 'masonry', dragging }]">
+    <header>
+      <span class="list-name">
+        <sort-icon
+          v-if="autoSortEnabled"
+          :sort-order="list[listIndex].sortOrder"
+          title="List sorted automatically"
         />
 
-        <list-settings
-            v-else-if="editing"
-            @update="updateLists"
-        />
-
-        <draggable
-            v-else
-            :class="['games', { 'empty': isEmpty }]"
-            :list="games"
-            :id="listIndex"
-            :move="validateMove"
-            :options="gameDraggableOptions"
-            @end="end"
-            @start="start"
+        {{ list[listIndex].name }}
+        <span
+          v-if="showGameCount"
         >
-            <component
-                v-for="game in games"
-                :is="gameCardComponent"
-                :key="`covers-${game}`"
-                :id="game"
-                :game-id="game"
-                :list-id="listIndex"
-            />
-        </draggable>
+          ({{ gameList.length }})
+        </span>
+      </span>
 
-        <button
-            v-if="!searching && !editing"
-            @click="addGame"
-            class="add-game-button small"
-            :title="$t('game.add')"
-        >
-            <i class="fas fa-plus" />
-        </button>
+      <list-settings-modal :list-index="listIndex" />
+    </header>
+
+    <draggable
+      v-if="view === 'masonry'"
+      :class="`game-masonry game-masonry-${listIndex}`"
+      :list="gameList"
+      :id="listIndex"
+      :move="validateMove"
+      v-bind="gameDraggableOptions"
+      @end="dragEnd"
+      @start="dragStart"
+    >
+      <component
+        v-for="game in gameList"
+        :is="gameCardComponent"
+        :key="`masonry-${game}`"
+        :id="game"
+        :game-id="game"
+        :list-id="listIndex"
+      />
+    </draggable>
+
+    <draggable
+      v-else
+      class="games"
+      :list="gameList"
+      :id="listIndex"
+      :move="validateMove"
+      v-bind="gameDraggableOptions"
+      @end="dragEnd"
+      @start="dragStart"
+    >
+      <component
+        v-for="game in sortedGames"
+        :is="gameCardComponent"
+        :key="`masonry-${game}`"
+        :id="game"
+        :game-id="game"
+        :list-id="listIndex"
+      />
+    </draggable>
+
+    <div v-if="isEmpty" class="empty-list">
+      <i class="fas fa-hand-pointer fa-2x hand-drag" />
+      <p><i class="fas fa-grip-vertical" /> Drag games here</p>
     </div>
+
+    <add-game-modal :list-id="listIndex" />
+  </div>
 </template>
 
 <script>
 import draggable from 'vuedraggable';
-import ListNameEdit from '@/components/Lists/ListNameEdit';
-import ListSettings from '@/components/GameBoard/ListSettings';
+import Masonry from 'masonry-layout';
+import ListSettingsModal from '@/components/Lists/ListSettingsModal';
 import GameCardDefault from '@/components/GameCards/GameCardDefault';
-import GameCardCover from '@/components/GameCards/GameCardCover';
-import GameCardWide from '@/components/GameCards/GameCardWide';
-import GameSearch from '@/components/GameSearch/GameSearch';
-import { mapState, mapGetters } from 'vuex';
-import firebase from 'firebase/app';
-import 'firebase/firestore';
-
-const db = firebase.firestore();
+import GameCardMasonry from '@/components/GameCards/GameCardMasonry';
+import GameCardGrid from '@/components/GameCards/GameCardGrid';
+import GameCardCompact from '@/components/GameCards/GameCardCompact';
+import GameCardText from '@/components/GameCards/GameCardText';
+import AddGameModal from '@/components/Lists/AddGameModal';
+import SortIcon from '@/components/SortIcon';
+import { orderBy } from 'lodash';
+import { mapState } from 'vuex';
 
 export default {
-    name: 'List',
+  components: {
+    GameCardDefault,
+    GameCardMasonry,
+    GameCardGrid,
+    GameCardCompact,
+    GameCardText,
+    AddGameModal,
+    SortIcon,
+    ListSettingsModal,
+    draggable,
+  },
 
-    components: {
-        GameCardDefault,
-        GameCardCover,
-        GameCardWide,
-        GameSearch,
-        ListNameEdit,
-        ListSettings,
-        draggable,
+  props: {
+    name: {
+      type: String,
+      default: '',
+    },
+    gameList: {
+      type: Array,
+      default: () => [],
+    },
+    listIndex: {
+      type: Number,
+      default: null,
+    },
+  },
+
+  data() {
+    return {
+      masonry: null,
+      gameDraggableOptions: {
+        handle: '.game-card',
+        ghostClass: 'card-placeholder',
+        filter: '.drag-filter',
+        delay: 100,
+        delayOnTouchOnly: true,
+        animation: 500,
+        group: {
+          name: 'games',
+        },
+      },
+      gameCardComponents: {
+        single: 'GameCardDefault',
+        masonry: 'GameCardMasonry',
+        grid: 'GameCardGrid',
+        compact: 'GameCardCompact',
+        text: 'GameCardText',
+      },
+    };
+  },
+
+  computed: {
+    ...mapState(['user', 'gameLists', 'platform', 'settings', 'games', 'dragging', 'progresses']),
+
+    autoSortEnabled() {
+      const list = this.list[this.listIndex];
+
+      return list && list.sortOrder && list.sortOrder !== 'sortByCustom';
     },
 
-    props: {
-        name: String,
-        games: [Object, Array],
-        listIndex: [String, Number],
+    sortedGames() {
+      const sortOrder = this.list[this.listIndex].sortOrder || 'sortByCustom';
+      const { gameList } = this;
+
+      // TODO: use lodash to clean things up a bit here
+
+      switch (sortOrder) {
+      case 'sortByCustom':
+        return gameList;
+      case 'sortByProgress':
+        return orderBy(gameList, [(game) => {
+          const progress = this.games[game]
+                        && this.progresses[this.platform.code][this.games[game].id]
+            ? Number(this.progresses[this.platform.code][this.games[game].id])
+            : 0;
+
+          return progress;
+        }], ['desc']);
+      case 'sortByRating':
+        return orderBy(gameList, [(game) => {
+          const rating = this.games[game] && this.games[game].rating
+            ? this.games[game].rating
+            : 0;
+
+          return rating;
+        }], ['desc']);
+      case 'sortByName':
+        return orderBy(gameList, [(game) => {
+          const name = this.games[game] && this.games[game].name
+            ? this.games[game].name.toUpperCase()
+            : '';
+
+          return name;
+        }]);
+      case 'sortByReleaseDate':
+        return orderBy(gameList, [(game) => {
+          const date = this.games[game] && this.games[game].release_dates
+            ? this.games[game].release_dates
+              .filter(({ platform }) => this.platform.id === platform)[0].date
+            : '';
+
+          return date;
+        }]);
+      default:
+        return gameList;
+      }
     },
 
-    data() {
-        return {
-            gameDraggableOptions: {
-                handle: '.game-drag-handle',
-                ghostClass: 'card-placeholder',
-                animation: 500,
-                group: {
-                    name: 'games',
-                },
-            },
-            gameCardComponents: {
-                single: 'GameCardDefault',
-                covers: 'GameCardCover',
-                wide: 'GameCardWide',
-            },
-        };
+    list() {
+      return this.gameLists[this.platform.code];
     },
 
-    computed: {
-        ...mapState(['user', 'gameLists', 'platform', 'activeListIndex', 'settings', 'searchActive']),
-
-        ...mapGetters(['darkModeEnabled']),
-
-        list() {
-            return this.gameLists[this.platform.code];
-        },
-
-        searching() {
-            return this.activeListIndex === this.listIndex && this.searchActive;
-        },
-
-        editing() {
-            return this.activeListIndex === this.listIndex && !this.searchActive;
-        },
-
-        isEmpty() {
-            return this.games.length === 0;
-        },
-
-        view() {
-            return this.list[this.listIndex].view;
-        },
-
-        gameCardComponent() {
-            return this.view
-                ? this.gameCardComponents[this.view]
-                : 'GameCardDefault';
-        },
-
-        viewClass() {
-            return this.list[this.listIndex].view || 'single';
-        },
-
-        transparent() {
-            return this.settings
-                && this.settings.wallpapers
-                && this.settings.wallpapers[this.platform.code]
-                && this.settings.wallpapers[this.platform.code].url
-                && this.settings.wallpapers[this.platform.code].transparent
-                ? 'transparent'
-                : '';
-        },
+    isEmpty() {
+      return this.gameList.length === 0;
     },
 
-    methods: {
-        updateLists(toastMessage) {
-            this.$store.commit('CLEAR_ACTIVE_LIST_INDEX');
-
-            const message = toastMessage || 'List saved';
-
-            db.collection('lists').doc(this.user.uid).set(this.gameLists, { merge: true })
-                .then(() => {
-                    this.$bus.$emit('TOAST', { message });
-                })
-                .catch(() => {
-                    this.$bus.$emit('TOAST', { message: 'Authentication error', type: 'error' });
-                });
-        },
-
-        editList() {
-            if (this.editing) {
-                this.$store.commit('CLEAR_ACTIVE_LIST_INDEX');
-            } else {
-                this.$store.commit('SET_ACTIVE_LIST_INDEX', this.listIndex);
-            }
-        },
-
-        addGame() {
-            this.$store.commit('CLEAR_SEARCH_RESULTS');
-            this.$store.commit('SET_ACTIVE_LIST_INDEX', this.listIndex);
-            this.$store.commit('SET_SEARCH_ACTIVE', true);
-        },
-
-        validateMove({ from, to }) {
-            const isDifferentList = from.id !== to.id;
-            const isDuplicate = this.list[to.id].games.includes(Number(this.draggingId));
-            const validMove = isDifferentList && isDuplicate;
-            return !validMove;
-        },
-
-        start({ item }) {
-            this.dragging = true;
-            this.draggingId = item.id;
-        },
-
-        end() {
-            this.$emit('end');
-        },
+    view() {
+      return this.list[this.listIndex].view;
     },
+
+    unique() {
+      return this.list.length === 1;
+    },
+
+    showGameCount() {
+      return this.settings[this.platform.code] && this.settings[this.platform.code].showGameCount;
+    },
+
+    gameCardComponent() {
+      return this.view && Object.keys(this.gameCardComponents).includes(this.view)
+        ? this.gameCardComponents[this.view]
+        : 'GameCardDefault';
+    },
+
+    viewClass() {
+      return this.list[this.listIndex].view || 'single';
+    },
+
+    hideGameRatings() {
+      return this.list[this.listIndex].hideGameRatings || false;
+    },
+
+    hideGameInfo() {
+      return this.list[this.listIndex].hideGameInfo || false;
+    },
+
+    hideGameInfoOnCover() {
+      return this.list[this.listIndex].hideGameInfoOnCover || false;
+    },
+  },
+
+  watch: {
+    view() {
+      this.initMasonry();
+
+      setTimeout(() => {
+        this.initMasonry();
+      }, 500);
+    },
+
+    gameList() {
+      this.initMasonry();
+
+      setTimeout(() => {
+        this.initMasonry();
+      }, 500);
+    },
+  },
+
+  mounted() {
+    this.initMasonry();
+
+    setTimeout(() => {
+      this.initMasonry();
+    }, 500);
+  },
+
+  methods: {
+    initMasonry() {
+      if (this.view === 'masonry') {
+        this.$nextTick(() => {
+          // eslint-disable-next-line
+            this.masonry = new Masonry(`.game-masonry-${this.listIndex}`, {
+            itemSelector: '.game-card',
+            gutter: 4,
+            percentPosition: true,
+          });
+        });
+      }
+    },
+
+    validateMove({ from, to }) {
+      const isDifferentList = from.id !== to.id;
+      const isDuplicate = this.list[to.id].games.includes(Number(this.draggingId));
+      const validMove = isDifferentList && isDuplicate;
+      return !validMove;
+    },
+
+    dragStart({ item }) {
+      this.$store.commit('SET_DRAGGING_STATUS', true);
+      this.draggingId = item.id;
+
+      this.$nextTick(() => {
+        if (window.innerWidth <= 780) {
+          window.navigator.vibrate([100]);
+        }
+      });
+    },
+
+    dragEnd() {
+      this.$store.commit('SET_DRAGGING_STATUS', false);
+      this.$emit('dragEnd');
+    },
+  },
 };
 </script>
 
 <style lang="scss" rel="stylesheet/scss" scoped>
-    @import "~styles/styles.scss";
+  @import "~styles/styles";
 
-    .list {
-        flex-shrink: 0;
-        cursor: default;
-        position: relative;
-        width: 300px;
-        background-color: $color-light-gray;
-        border-radius: $border-radius;
-        overflow: hidden;
-        margin-right: $gp;
-        max-height: calc(100vh - 81px);
+  .list {
+    flex-shrink: 0;
+    cursor: default;
+    position: relative;
+    width: 300px;
+    background: var(--list-background);
+    border-radius: var(--border-radius);
+    margin-right: $gp;
+    max-height: calc(100vh - 100px);
 
-        &.transparent {
-            background-color: $color-light-gray-transparent;
-        }
+    @media($small) {
+      max-height: calc(100vh - 80px);
+      min-height: calc(100vh - 80px);
 
-        &.wide {
-            width: $list-width-wide;
-        }
-
-        &.covers {
-            .games {
-                padding-top: $gp / 2;
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
-                grid-gap: $gp / 4;
-            }
-        }
-
-        &.dark {
-            background-color: $color-dark-gray;
-
-            &.transparent {
-                background-color: $color-dark-gray-transparent;
-            }
-
-            .list-header {
-                background-color: $color-darker-gray;
-            }
-
-            .add-game-button {
-                color: $color-white;
-            }
-        }
-
-        .list-header {
-            align-items: center;
-            background: $color-dark-gray;
-            color: $color-white;
-            display: flex;
-            height: $list-header-height;
-            justify-content: space-between;
-            padding-left: $gp / 2;
-            position: absolute;
-            width: 100%;
-
-            &.searching {
-                background: $color-green;
-            }
-
-            &.editing {
-                background: $color-blue;
-            }
-        }
-
+      &:not(.dragging) {
         .games {
-            height: 100%;
-            overflow: hidden;
-            max-height: calc(100vh - 154px);
-            min-height: 80px;
-            overflow-y: auto;
-            margin-top: $list-header-height;
-            padding: 0 $gp / 2;
-            width: 100%;
+          scroll-snap-type: x mandatory;
+          scroll-padding: $gp / 2;
 
-            &.empty {
-                margin: ($list-header-height + $gp / 2) $gp / 2 $gp / 2;
-                padding: $gp;
-                width: auto;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border: 1px dashed $color-gray;
-            }
+          .game-card {
+            scroll-snap-align: start;
+          }
         }
+      }
     }
 
-    .list-settings {
-        padding: $gp;
+    &.unique {
+      @media($small) {
+        min-width: 300px;
+        width: calc(100vw - 80px);
+      }
     }
 
-    .add-game-button {
-        width: 100%;
+    header {
+      align-items: center;
+      background: var(--list-header-background);
+      color: var(--list-header-text-color);
+      display: flex;
+      height: $list-header-height;
+      justify-content: space-between;
+      padding-left: $gp / 2;
+      position: absolute;
+      border-radius: var(--border-radius);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      width: 100%;
     }
+
+    .list-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .games {
+      display: grid;
+      height: 100%;
+      overflow: hidden;
+      max-height: calc(100vh - 150px);
+      min-height: 120px;
+      overflow-y: auto;
+      margin-top: $list-header-height;
+      padding: $gp / 2 $gp / 2 0;
+      width: 100%;
+    }
+
+    &.grid {
+      .games {
+        padding: $gp / 2;
+        grid-template-columns: 1fr 1fr;
+        grid-gap: $gp / 2;
+
+        // https://github.com/w3c/csswg-drafts/issues/129
+        &::after {
+          content: '';
+          display: block;
+          height: 1px;
+          margin-top: -1px;
+          width: 100%;
+          grid-column: span 2;
+        }
+      }
+
+      &.unique {
+        .games {
+          grid-template-columns: 1fr 1fr 1fr;
+
+          @media($tiny) {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          @media($desktop) {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+      }
+    }
+  }
+
+  .list-settings {
+    padding: $gp;
+  }
+
+  .game-masonry {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    max-height: calc(100vh - 154px);
+    min-height: 80px;
+    overflow-y: auto;
+    margin-top: $list-header-height;
+    padding: 4px;
+    width: 100%;
+  }
+
+  .empty-list {
+    color: var(--progress-secondary-color);
+    opacity: 0.8;
+    position: absolute;
+    top: 0;
+    margin-top: 62px;
+    height: 60px;
+    width: 130px;
+    left: 95px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .fa-grip-vertical {
+    opacity: 0.5;
+    margin-right: $gp / 2;
+  }
+
+  .hand-drag {
+    position: absolute;
+    left: 0;
+    top: 22px;
+  }
 </style>

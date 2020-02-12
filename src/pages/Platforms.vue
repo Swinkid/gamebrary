@@ -1,177 +1,121 @@
 <template lang="html">
-    <div :class="['platforms-page', { dark: darkModeEnabled }]">
+  <div class="platforms-page">
+    <platforms-header />
 
-        <div
-            v-masonry
-            transition-duration="0.3s"
-            item-selector=".platform"
-            column-width="100"
-            gutter="8"
-        >
-            <platform
-                v-for="platform in filteredPlatforms"
-                :key="platform.name"
-                :platform-data="platform"
-                :block-height="platform.height"
-                :block-width="platform.width"
-            />
-        </div>
+    <component
+      :is="platformsComponent"
+      :platforms="sortedPlatforms"
+    />
 
-        <footer>
-            <small>
-                Gamebrary is free and open source, consider helping its development by
-                <a href="https://www.paypal.me/RomanCervantes/5" target="_blank">
-                    {{ $t('settings.donate') }}
-                </a>
-                ,
-                <a href="https://github.com/romancmx/gamebrary/issues" target="_blank">
-                    {{ $t('settings.reportBugs') }}
-                </a>
-                or
-                <a href="https://goo.gl/forms/r0juBCsZaUtJ03qb2" target="_blank">
-                    {{ $t('settings.submitFeedback') }}
-                </a>
-                .
-            </small>
-
-            <igdb-credit gray />
-        </footer>
-    </div>
+    <platforms-footer />
+  </div>
 </template>
 
 <script>
-import platforms from '@/shared/platforms';
-import ToggleSwitch from '@/components/ToggleSwitch/ToggleSwitch';
-import IgdbCredit from '@/components/IgdbCredit/IgdbCredit';
-import Platform from '@/components/Platform/Platform';
-import Panel from '@/components/Panel/Panel';
+import platforms from '@/platforms';
+import PlatformsFooter from '@/components/Platforms/PlatformsFooter';
+import PlatformsHeader from '@/components/Platforms/PlatformsHeader';
+import PlatformsGrid from '@/components/Platforms/PlatformsGrid';
+import PlatformsList from '@/components/Platforms/PlatformsList';
 import { sortBy } from 'lodash';
-import { mapState, mapGetters } from 'vuex';
+import { mapState } from 'vuex';
 
 export default {
-    components: {
-        ToggleSwitch,
-        IgdbCredit,
-        Platform,
-        Panel,
+  components: {
+    PlatformsFooter,
+    PlatformsHeader,
+    PlatformsGrid,
+    PlatformsList,
+  },
+
+  data() {
+    return {
+      platforms,
+      searchText: '',
+    };
+  },
+
+  computed: {
+    ...mapState(['gameLists', 'platform', 'settings']),
+
+    // TODO: move to getter and replace other instances
+    hasLists() {
+      return Object.keys(this.gameLists).length > 0;
     },
 
-    data() {
-        return {
-            platforms,
-        };
+    listView() {
+      return this.settings && this.settings.platformsView
+        ? this.settings.platformsView
+        : 'grid';
     },
 
-    computed: {
-        ...mapState(['gameLists', 'platform', 'settings']),
-        ...mapGetters(['darkModeEnabled']),
-
-        ownedListCount() {
-            return Object.keys(this.gameLists).length;
-        },
-
-        hasLists() {
-            return Object.keys(this.gameLists).length > 0;
-        },
-
-        ownedListsOnly() {
-            return this.settings && this.settings.ownedListsOnly;
-        },
-
-        sortedByGeneration() {
-            return this.settings && !this.settings.sortListsAlphabetically;
-        },
-
-        filteredPlatforms() {
-            const availableLists = this.ownedListsOnly
-                ? this.platforms.filter(({ code }) => this.gameLists[code])
-                : this.platforms;
-
-            this.$redrawVueMasonry();
-
-            return this.settings && this.settings.sortListsAlphabetically
-                ? sortBy(availableLists, 'name')
-                : sortBy(availableLists, 'generation').reverse();
-        },
+    platformsComponent() {
+      return this.listView === 'list'
+        ? 'PlatformsList'
+        : 'PlatformsGrid';
     },
 
-    methods: {
-        groupLabel(label) {
-            return label === '0'
-                ? this.$t('platforms.computersArcade')
-                : `${this.ordinalSuffix(label)} ${this.$t('platforms.generation')}`;
-        },
-
-        ordinalSuffix(value) {
-            const j = value % 10;
-            const k = value % 100;
-
-            if (j === 1 && k !== 11) {
-                return `${value}${this.$t('platforms.st')}`;
-            }
-
-            if (j === 2 && k !== 12) {
-                return `${value}${this.$t('platforms.nd')}`;
-            }
-            if (j === 3 && k !== 13) {
-                return `${value}${this.$t('platforms.rd')}`;
-            }
-
-            return `${value}${this.$t('platforms.th')}`;
-        },
+    platformsFilterField() {
+      return this.settings && this.settings.platformsFilterField
+        ? this.settings.platformsFilterField
+        : null;
     },
+
+    platformsSortField() {
+      return this.settings && this.settings.platformsSortField
+        ? this.settings.platformsSortField
+        : 'releaseYear';
+    },
+
+    ownedListsOnly() {
+      return this.settings && this.settings.ownedListsOnly
+        ? this.settings.ownedListsOnly
+        : false;
+    },
+
+    filteredPlatforms() {
+      const availableLists = this.ownedListsOnly
+        ? this.platforms.filter(({ code }) => this.gameLists[code])
+        : this.platforms;
+
+      return this.platformsFilterField
+        ? availableLists.filter(({ type }) => type === this.platformsFilterField)
+        : availableLists;
+    },
+
+    sortedPlatforms() {
+      const sortedPlatforms = this.platformsSortField
+        ? sortBy(this.filteredPlatforms, this.platformsSortField)
+        : this.filteredPlatforms;
+
+      return this.platformsSortField === 'releaseYear'
+        ? sortedPlatforms.reverse()
+        : sortedPlatforms;
+    },
+
+    // filteredPlatforms() {
+    //   const availableLists = this.ownedListsOnly
+    //     ? this.platforms.filter(({ code }) => this.gameLists[code])
+    //     : this.platforms;
+    //
+    // if (msnry) {
+    //   msnry.reloadItems();
+    //   msnry.layout();
+    // }
+    //
+    //   return this.settings && this.settings.sortListsAlphabetically
+    //     ? sortBy(availableLists, 'name')
+    //     : availableLists;
+    // },
+  },
 };
 </script>
 
 <style lang="scss" rel="stylesheet/scss" scoped>
-    @import "~styles/styles.scss";
+  @import "~styles/styles";
 
-    .platforms-page {
-        color: $color-dark-gray;
-        min-height: calc(100vh - #{$navHeight});
-        padding: 0 $gp;
-
-        &.dark {
-            color: $color-gray;
-
-            .group-label {
-                background-color: $color-darkest-gray;
-            }
-        }
-    }
-
-    .platforms {
-        display: flex;
-        flex-direction: column;
-
-        &.reverse {
-            flex-direction: column-reverse;
-        }
-    }
-
-    .group-label {
-        position: sticky;
-        top: 0;
-        padding: $gp / 3 0;
-        background-color: $color-gray;
-    }
-
-    footer {
-        padding: $gp / 2 0;
-        justify-content: center;
-        display: flex;
-        align-items: center;
-
-        a {
-            color: $color-dark-gray;
-        }
-    }
-
-    .item {
-        overflow: hidden;
-        width: 300px;
-        height: 200px;
-        border-radius: $border-radius;
-        padding: $gp;
-    }
+  .platforms-page {
+    min-height: calc(100vh - #{$navHeight});
+    padding: 0 $gp $gp / 2;
+  }
 </style>
